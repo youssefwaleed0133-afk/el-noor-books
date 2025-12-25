@@ -1360,10 +1360,9 @@
                                 <p class="mb-3">كل 100 استغفار = 1% خصم (بحد أقصى 5%)</p>
                                 
                                 <div class="d-flex align-items-center justify-content-center mb-3">
-                                    <button class="btn btn-primary me-3" id="istighfarBtnCart" disabled>
-                                        <i class="fas fa-plus me-2"></i> أستغفر الله
-                                    </button>
-                                    <div class="text-center">
+<button class="btn btn-primary me-3" id="istighfarBtnCart" disabled="${cart.length === 0}">
+    <i class="fas fa-plus me-2"></i> أستغفر الله
+</button>                                    <div class="text-center">
                                         <div class="counter-circle" id="istighfarCounterCart">0</div>
                                         <small>عدد الاستغفارات</small>
                                     </div>
@@ -2416,8 +2415,10 @@ function addToWishlist() {
 function updateIstighfarCartDisplay() {
     const counter = document.getElementById('istighfarCounterCart');
     const applyDiscountBtn = document.getElementById('applyDiscountCart');
+    const istighfarBtn = document.getElementById('istighfarBtnCart');
     
     if (counter) counter.textContent = userState.istighfarCount;
+    
     if (applyDiscountBtn) {
         if (userState.currentDiscount > 0) {
             applyDiscountBtn.textContent = `تطبيق الخصم (${userState.currentDiscount}%)`;
@@ -2427,20 +2428,31 @@ function updateIstighfarCartDisplay() {
             applyDiscountBtn.disabled = true;
         }
     }
+    
+    if (istighfarBtn) {
+        istighfarBtn.disabled = cart.length === 0;
+    }
 }
 
 // ========== إظهار قسم الاستغفار عند وجود عناصر في السلة ==========
 function updateIstighfarSectionVisibility() {
     const istighfarSection = document.getElementById('istighfarSection');
+    const istighfarBtn = document.getElementById('istighfarBtnCart');
+    
     if (istighfarSection) {
         if (cart.length > 0) {
             istighfarSection.style.display = 'block';
+            if (istighfarBtn) {
+                istighfarBtn.disabled = false;
+            }
         } else {
             istighfarSection.style.display = 'none';
+            if (istighfarBtn) {
+                istighfarBtn.disabled = true;
+            }
         }
     }
 }
-
 // ========== وظائف التنبيهات لحفظة القرآن ==========
 function showHafizRequestAlert() {
     const alertDiv = document.getElementById('hafizRequestAlert');
@@ -2610,6 +2622,7 @@ function applyCategoryFilter(categoryName) {
             }
                 setupPageChangeObserver();
     updateIstighfarSectionVisibility();
+    updateIstighfarCartDisplay();
 
             console.log('تم تهيئة الموقع بنجاح');
         }
@@ -3995,8 +4008,16 @@ function applyCategoryFilter(categoryName) {
             // تحديث ملخص الطلب
             updateCartSummary();
                 updateIstighfarSectionVisibility();
+            const istighfarBtn = document.getElementById('istighfarBtnCart');
+    if (istighfarBtn) {
+        istighfarBtn.disabled = cart.length === 0;
+    }
+    
+    updateIstighfarSectionVisibility();
+}
 
-        }
+
+    
 
         function updateCartItems() {
             if (!DOM.cartItemsContainer) return;
@@ -4105,55 +4126,60 @@ function applyCategoryFilter(categoryName) {
             }
         }
 
-        function incrementIstighfarCart() {
-            const now = Date.now();
-            // منع الضغط السريع (نصف ثانية على الأقل بين كل ضغطة)
-            if (now - userState.lastIstighfarTime < 500) {
-                showAlert('يرجى الانتظار قليلاً بين كل استغفار', 'info');
-                return;
-            }
-            
-            // الحد الأقصى 500 استغفار
-            if (userState.istighfarCount >= 500) {
-                showAlert('لقد وصلت للحد الأقصى من الاستغفارات (500)', 'info');
-                return;
-            }
-            
-            userState.istighfarCount++;
-            userState.lastIstighfarTime = now;
-            userState.currentDiscount = Math.min(Math.floor(userState.istighfarCount / 100), 5);
-            
-            // تحديث العرض
-            const counter = document.getElementById('istighfarCounterCart');
-            const applyDiscountBtn = document.getElementById('applyDiscountCart');
-            
-            if (counter) counter.textContent = userState.istighfarCount;
-            if (applyDiscountBtn) {
-                if (userState.currentDiscount > 0) {
-                    applyDiscountBtn.textContent = `تطبيق الخصم (${userState.currentDiscount}%)`;
-                    applyDiscountBtn.disabled = false;
-                } else {
-                    applyDiscountBtn.textContent = 'تطبيق الخصم';
-                    applyDiscountBtn.disabled = true;
-                }
-            }
-            
-            saveIstighfarToStorage();
-            updateCartSummary();
-            
-            // تأثير بصري
-            const btn = document.getElementById('istighfarBtnCart');
-            if (btn) {
-                btn.classList.remove('btn-primary');
-                btn.classList.add('btn-success');
-                
-                setTimeout(() => {
-                    btn.classList.remove('btn-success');
-                    btn.classList.add('btn-primary');
-                }, 300);
-            }
+function incrementIstighfarCart() {
+    // التحقق من وجود عناصر في السلة
+    if (cart.length === 0) {
+        showAlert('أضف كتباً إلى السلة أولاً', 'info');
+        return;
+    }
+    
+    const now = Date.now();
+    // منع الضغط السريع (نصف ثانية على الأقل بين كل ضغطة)
+    if (now - userState.lastIstighfarTime < 500) {
+        showAlert('يرجى الانتظار قليلاً بين كل استغفار', 'info');
+        return;
+    }
+    
+    // الحد الأقصى 500 استغفار
+    if (userState.istighfarCount >= 500) {
+        showAlert('لقد وصلت للحد الأقصى من الاستغفارات (500)', 'info');
+        return;
+    }
+    
+    userState.istighfarCount++;
+    userState.lastIstighfarTime = now;
+    userState.currentDiscount = Math.min(Math.floor(userState.istighfarCount / 100), 5);
+    
+    // تحديث العرض
+    const counter = document.getElementById('istighfarCounterCart');
+    const applyDiscountBtn = document.getElementById('applyDiscountCart');
+    
+    if (counter) counter.textContent = userState.istighfarCount;
+    if (applyDiscountBtn) {
+        if (userState.currentDiscount > 0) {
+            applyDiscountBtn.textContent = `تطبيق الخصم (${userState.currentDiscount}%)`;
+            applyDiscountBtn.disabled = false;
+        } else {
+            applyDiscountBtn.textContent = 'تطبيق الخصم';
+            applyDiscountBtn.disabled = true;
         }
-
+    }
+    
+    saveIstighfarToStorage();
+    updateCartSummary();
+    
+    // تأثير بصري
+    const btn = document.getElementById('istighfarBtnCart');
+    if (btn) {
+        btn.classList.remove('btn-primary');
+        btn.classList.add('btn-success');
+        
+        setTimeout(() => {
+            btn.classList.remove('btn-success');
+            btn.classList.add('btn-primary');
+        }, 300);
+    }
+}
         function applyIstighfarDiscountCart() {
             if (userState.currentDiscount === 0) {
                 showAlert('ليس لديك خصم من الاستغفار بعد. استغفر الله لتحصل على خصم.', 'info');
@@ -4391,7 +4417,7 @@ function quickSearch(query) {
     if (searchInput) {
         searchInput.value = query;
         navigateTo('books');
-        setTimeout(() => filterBooks(), 300);
+        setTimeout(() => filterBooks(), 0);
     }
 }
 
@@ -4909,7 +4935,7 @@ function getBestSellers() {
             if (searchInput) {
                 searchInput.value = scholar.name;
                 navigateTo('books');
-                setTimeout(() => filterBooks(), 300);
+                setTimeout(() => filterBooks(), 0);
             }
         }
 
