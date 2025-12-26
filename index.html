@@ -2631,45 +2631,45 @@ async function init() {
     // تعيين سنة حقوق النشر
     document.getElementById('currentYear').textContent = new Date().getFullYear();
     
-    try {
-        // التحقق من اتصال السيرفر
-        const isConnected = await checkBackendConnection();
+    // التحقق من اتصال الخادم
+    const connection = await testConnection();
+    
+    if (connection.connected) {
+        console.log('✅ اتصال Back-End ناجح:', connection.endpoint);
         
-        if (isConnected) {
-            console.log('✅ اتصال Back-End ناجح');
+        // تحميل التوكن من التخزين المحلي
+        const token = localStorage.getItem('access_token');
+        if (token) {
+            apiService.updateToken(token);
             
-            // تحميل التوكن من التخزين المحلي
-            const token = localStorage.getItem('access_token');
-            if (token) {
-                apiService.updateToken(token);
-                
-                // تحميل بيانات المستخدم
-                const userData = localStorage.getItem('user_data');
-                if (userData) {
-                    try {
-                        const user = JSON.parse(userData);
-                        userState.isLoggedIn = true;
-                        userState.userData = user;
-                        userState.isAdmin = user.role === 'admin';
-                        userState.isHafiz = user.is_hafiz || false;
-                    } catch (error) {
-                        console.error('خطأ في تحليل بيانات المستخدم:', error);
-                    }
+            // تحميل بيانات المستخدم
+            const userData = localStorage.getItem('user_data');
+            if (userData) {
+                try {
+                    const user = JSON.parse(userData);
+                    userState.isLoggedIn = true;
+                    userState.userData = user;
+                    userState.isAdmin = user.role === 'admin';
+                    userState.isHafiz = user.is_hafiz || false;
+                } catch (error) {
+                    console.error('خطأ في تحليل بيانات المستخدم:', error);
                 }
             }
-            
-            // استخدام API الحقيقي
-            console.log('📡 استخدام API الحقيقي');
-            await loadDataFromBackend();
-            
-        } else {
-            console.warn('⚠️  الخادم غير متصل، استخدام البيانات المحلية');
-            await loadLocalFallbackData();
         }
         
-    } catch (error) {
-        console.error('❌ خطأ في التهيئة:', error);
-        await loadLocalFallbackData();
+        // استخدام API الحقيقي
+        console.log('📡 استخدام API الحقيقي');
+        await loadDataFromBackend();
+        
+    } else {
+        console.warn('⚠️  الخادم غير متصل، استخدام البيانات المحلية');
+        
+        // استخدام البيانات المحلية كبديل
+        initializeData();
+        loadSavedData();
+        
+        // عرض تحذير للمستخدم
+        showAlert('الخادم غير متصل. يتم استخدام البيانات المخزنة محلياً.', 'warning', 5000);
     }
     
     // إعداد معالجي الأحداث
@@ -2678,67 +2678,59 @@ async function init() {
     // تحديث حالة تسجيل الدخول
     updateLoginState();
     
-    console.log('✨ تم تهيئة الموقع بنجاح');
-}
-
-async function loadDataFromBackend() {
-    try {
-        // مزامنة البيانات من السيرفر أولاً
-        await stateManager.syncFromServer();
-        
-        // تحميل جميع المكونات
-        await Promise.all([
-            renderAllBooks(),
-            renderFeaturedBooks(),
-            renderCategories(),
-            renderScholars(),
-            renderWomenBooks(),
-            renderQuranBooks(),
-            renderStudentLevels(),
-            updateCartDisplay()
-        ]);
-        
-        // تحديث التبرعات
-        updateDonationsDisplay();
-        
-    } catch (error) {
-        console.error('خطأ في تحميل البيانات من الخادم:', error);
-        await loadLocalFallbackData();
-    }
-}
-
-async function loadLocalFallbackData() {
-    console.log('📂 استخدام البيانات المحلية كبديل');
-    
-    // استخدام البيانات المحلية
-    initializeData();
-    loadSavedData();
-    
-    // عرض تحذير للمستخدم
-    showAlert('الخادم غير متصل. يتم استخدام البيانات المخزنة محلياً.', 'warning', 5000);
-    
-    // عرض البيانات المحلية
-    renderAllBooks();
-    renderFeaturedBooks();
-    renderCategories();
-    renderScholars();
-}
-    // تحديث حالة تسجيل الدخول
-    updateLoginState();
-    
     // تحديث لوحة التحكم إذا كان المستخدم مسؤول
     if (userState.isAdmin) {
-        setTimeout(async () => {
-            await updateAdminDashboard();
+        setTimeout(() => {
+            updateAdminDashboard();
         }, 500);
     }
     
     updateIstighfarSectionVisibility();
     updateIstighfarCartDisplay();
     
-    console.log('تم تهيئة الموقع بنجاح');
+    console.log('✨ تم تهيئة الموقع بنجاح');
+}
 
-        // ========== لوحة التحكم - دالة مُحدثة ==========
+// دالة لتحميل البيانات من Back-End
+async function loadDataFromBackend() {
+    try {
+        // تحميل الكتب المميزة
+        await renderFeaturedBooks();
+        
+        // تحميل جميع الكتب
+        await renderAllBooks();
+        
+        // تحميل التصنيفات
+        await renderCategories();
+        
+        // تحميل العلماء
+        await renderScholars();
+        
+        // تحميل كتب النساء
+        await renderWomenBooks();
+        
+        // تحميل كتب القرآن
+        await renderQuranBooks();
+        
+        // تحميل مستويات الطالب
+        renderStudentLevels();
+        
+        // تحديث السلة
+        await updateCartDisplay();
+        
+        // تحديث التبرعات
+        updateDonationsDisplay();
+        
+    } catch (error) {
+        console.error('خطأ في تحميل البيانات من الخادم:', error);
+        
+        // استخدام البيانات المحلية كبديل
+        initializeData();
+        loadSavedData();
+        renderAllBooks();
+        renderFeaturedBooks();
+    }
+}        // ========== لوحة التحكم - دالة مُحدثة ==========
         function updateAdminDashboard() {
             console.log('تحديث لوحة التحكم...');
             
@@ -2778,57 +2770,7 @@ async function loadLocalFallbackData() {
                 container.innerHTML = '<p class="text-muted">لا توجد طلبات حديثة</p>';
                 return;
             }
-            // ========== نظام حالة التحميل ==========
-let isLoading = false;
-const loadingStates = new Set();
-
-function showLoadingState(message = 'جاري التحميل...') {
-    if (loadingStates.size === 0) {
-        // إنشاء عنصر التحميل إذا لم يكن موجوداً
-        let loader = document.getElementById('global-loader');
-        if (!loader) {
-            loader = document.createElement('div');
-            loader.id = 'global-loader';
-            loader.className = 'global-loader';
-            loader.style.cssText = `
-                position: fixed;
-                top: 0;
-                left: 0;
-                right: 0;
-                bottom: 0;
-                background: rgba(255, 255, 255, 0.9);
-                display: flex;
-                flex-direction: column;
-                justify-content: center;
-                align-items: center;
-                z-index: 9999;
-                backdrop-filter: blur(5px);
-            `;
-            loader.innerHTML = `
-                <div class="spinner" style="width: 60px; height: 60px;"></div>
-                <p class="mt-3">${message}</p>
-            `;
-            document.body.appendChild(loader);
-        }
-    }
-    
-    loadingStates.add(message);
-    isLoading = true;
-}
-
-function hideLoadingState() {
-    loadingStates.clear();
-    isLoading = false;
-    
-    const loader = document.getElementById('global-loader');
-    if (loader) {
-        setTimeout(() => {
-            if (loadingStates.size === 0 && loader.parentNode) {
-                loader.remove();
-            }
-        }, 300);
-    }
-}
+            
             let html = '';
             recentOrders.forEach(order => {
                 html += `
@@ -4488,64 +4430,28 @@ async function renderFeaturedBooks() {
 }
 
 // ========== عرض جميع الكتب ==========
-// ========== عرض جميع الكتب ==========
 async function renderAllBooks() {
     try {
-        if (!DOM.allBooksContainer) return;
-        
-        // إظهار حالة التحميل
-        DOM.allBooksContainer.innerHTML = `
-            <div class="col-12 text-center py-5">
-                <div class="spinner"></div>
-                <p class="mt-3">جاري تحميل الكتب...</p>
-            </div>
-        `;
-        
         const result = await apiService.getBooks();
         
-        if (result.success) {
+        if (result.success && DOM.allBooksContainer) {
             DOM.allBooksContainer.innerHTML = '';
             
-            // هنا الفرق الرئيسي: البيانات تأتي في result.data
-            const booksData = result.data.books || result.data || [];
-            
-            if (booksData.length === 0) {
-                DOM.allBooksContainer.innerHTML = `
-                    <div class="col-12 text-center py-5">
-                        <i class="fas fa-book fa-3x text-muted mb-3"></i>
-                        <h4 class="text-muted">لا توجد كتب حالياً</h4>
-                    </div>
-                `;
+            if (result.data.length === 0) {
+                DOM.allBooksContainer.innerHTML = '<div class="col-12 text-center"><p class="text-muted">لا توجد كتب حالياً</p></div>';
                 return;
             }
             
-            // تحديث الحالة المحلية
-            books = booksData;
-            
-            // عرض الكتب
-            booksData.forEach(book => {
+            result.data.forEach(book => {
                 DOM.allBooksContainer.appendChild(createBookCard(book));
             });
-            
-            console.log(`تم تحميل ${booksData.length} كتاب من السيرفر`);
-        } else {
-            throw new Error(result.message || 'فشل في تحميل الكتب');
         }
     } catch (error) {
-        console.error('خطأ في تحميل الكتب:', error);
-        
-        DOM.allBooksContainer.innerHTML = `
-            <div class="col-12 text-center py-5">
-                <i class="fas fa-exclamation-triangle fa-3x text-danger mb-3"></i>
-                <h4 class="text-danger">حدث خطأ في تحميل الكتب</h4>
-                <p class="text-muted">${error.message}</p>
-                <button class="btn btn-primary mt-3" onclick="renderAllBooks()">
-                    <i class="fas fa-redo me-2"></i> إعادة المحاولة
-                </button>
-            </div>
-        `;
+        console.error('Error loading books:', error);
+        DOM.allBooksContainer.innerHTML = '<div class="col-12 text-center"><p class="text-muted">حدث خطأ في تحميل الكتب</p></div>';
     }
 }
+
 // ========== عرض الكتب حسب الفئة ==========
 async function renderWomenBooks() {
     try {
@@ -5205,366 +5111,290 @@ function getBestSellers() {
     </script>
     <!-- API Service -->
 <script>
-    // ========== نظام إدارة الحالة ==========
-class StateManager {
+class ApiService {
     constructor() {
-        this.serverState = {
-            books: [],
-            categories: [],
-            scholars: [],
-            cart: [],
-            orders: []
+        this.baseURL = 'http://localhost:8000/api';
+        this.token = localStorage.getItem('access_token');
+    }
+
+    // تحديث التوكن
+    updateToken(token) {
+        this.token = token;
+    }
+
+    // إعداد الرؤوس
+    getHeaders(includeAuth = true) {
+        const headers = {
+            'Content-Type': 'application/json',
         };
         
-        this.localState = {
-            user: null,
-            ui: {},
-            temporaryData: {}
-        };
+        if (includeAuth && this.token) {
+            headers['Authorization'] = `Bearer ${this.token}`;
+        }
+        
+        return headers;
     }
-    
-    // تحديث البيانات من السيرفر
-    async syncFromServer() {
+
+    // معالجة الردود
+    async handleResponse(response) {
+        const data = await response.json();
+        
+        if (!response.ok) {
+            throw new Error(data.error || 'حدث خطأ في الخادم');
+        }
+        
+        return data;
+    }
+
+    // ========== المصادقة ==========
+    async login(email, password) {
         try {
-            console.log('🔄 مزامنة البيانات من السيرفر...');
+            const response = await fetch(`${this.baseURL}/auth/login`, {
+                method: 'POST',
+                headers: this.getHeaders(false),
+                body: JSON.stringify({ email, password })
+            });
             
-            // تحميل جميع البيانات بالتوازي
-            const [booksRes, categoriesRes, cartRes] = await Promise.allSettled([
-                apiService.getBooks(),
-                apiService.getCategories(),
-                apiService.getCart()
-            ]);
+            const data = await this.handleResponse(response);
             
-            // تحديث الحالة من السيرفر
-            if (booksRes.status === 'fulfilled' && booksRes.value.success) {
-                this.serverState.books = booksRes.value.data.books || booksRes.value.data || [];
-            }
-            
-            if (categoriesRes.status === 'fulfilled' && categoriesRes.value.success) {
-                this.serverState.categories = categoriesRes.value.data.categories || categoriesRes.value.data || [];
-            }
-            
-            if (cartRes.status === 'fulfilled' && cartRes.value.success) {
-                this.serverState.cart = cartRes.value.data.items || cartRes.value.data || [];
-            }
-            
-            console.log('✅ تمت مزامنة البيانات بنجاح');
-            return true;
-        } catch (error) {
-            console.error('❌ خطأ في مزامنة البيانات:', error);
-            return false;
-        }
-    }
-    
-    // إعادة تعيين الحالة المحلية
-    clearLocalState() {
-        this.localState = {
-            user: null,
-            ui: {},
-            temporaryData: {}
-        };
-    }
-    
-    // الحصول على البيانات مع أولوية السيرفر
-    getBooks() {
-        return this.serverState.books.length > 0 
-            ? this.serverState.books 
-            : this.localState.temporaryData.books || [];
-    }
-}
-
-// إنشاء نسخة عالمية
-const stateManager = new StateManager();
-
-// ========== وظائف لإعادة تحميل البيانات بعد العمليات ==========
-async function refreshDataAfterOperation(operationName) {
-    console.log(`🔄 إعادة تحميل البيانات بعد ${operationName}...`);
-    
-    try {
-        // عرض حالة التحميل
-        showLoadingState();
-        
-        // مزامنة البيانات من السيرفر
-        await stateManager.syncFromServer();
-        
-        // إعادة عرض جميع المكونات
-        await Promise.all([
-            renderAllBooks(),
-            renderFeaturedBooks(),
-            renderCategories(),
-            updateCartDisplay()
-        ]);
-        
-        // إخفاء حالة التحميل
-        hideLoadingState();
-        
-        console.log(`✅ تم إعادة تحميل البيانات بعد ${operationName}`);
-    } catch (error) {
-        console.error(`❌ خطأ في إعادة تحميل البيانات:`, error);
-        hideLoadingState();
-        showAlert('حدث خطأ في تحديث البيانات', 'error');
-    }
-}
-
-// دالة لإضافة كتاب مع إعادة تحميل البيانات
-async function addBookWithRefresh(bookData) {
-    try {
-        const result = await apiService.createBook(bookData);
-        
-        if (result.success) {
-            showAlert('تم إضافة الكتاب بنجاح', 'success');
-            
-            // إعادة تحميل البيانات من السيرفر
-            await refreshDataAfterOperation('إضافة كتاب');
-            
-            return result;
-        } else {
-            throw new Error(result.message || 'فشل في إضافة الكتاب');
-        }
-    } catch (error) {
-        showAlert(error.message, 'error');
-        throw error;
-    }
-}
-
-// دالة لحذف كتاب مع إعادة تحميل البيانات
-async function deleteBookWithRefresh(bookId) {
-    if (!confirm('هل أنت متأكد من حذف هذا الكتاب؟')) return;
-    
-    try {
-        const result = await apiService.deleteBook(bookId);
-        
-        if (result.success) {
-            showAlert('تم حذف الكتاب بنجاح', 'success');
-            
-            // إعادة تحميل البيانات من السيرفر
-            await refreshDataAfterOperation('حذف كتاب');
-            
-            return result;
-        } else {
-            throw new Error(result.message || 'فشل في حذف الكتاب');
-        }
-    } catch (error) {
-        showAlert(error.message, 'error');
-        throw error;
-    }
-}
-    <!-- API Service المحسّنة -->
-    class ApiService {
-        constructor() {
-            this.baseURL = 'http://localhost:8000/api';
-            this.token = localStorage.getItem('access_token');
-        }
-
-        updateToken(token) {
-            this.token = token;
-            localStorage.setItem('access_token', token); // ✅ يحفظ في localStorage
-        }
-
-        getHeaders(includeAuth = true) {
-            const headers = {
-                'Content-Type': 'application/json',
-            };
-            
-            if (includeAuth && this.token) {
-                headers['Authorization'] = `Bearer ${this.token}`;
-            }
-            
-            return headers;
-        }
-
-        async handleResponse(response) {
-            console.log(`Response status: ${response.status}`);
-            
-            let data;
-            try {
-                data = await response.json();
-            } catch (error) {
-                throw new Error('تنسيق JSON غير صحيح من السيرفر');
-            }
-            
-            if (!response.ok) {
-                const errorMessage = data.message || data.error || `خطأ ${response.status}: ${response.statusText}`;
-                throw new Error(errorMessage);
-            }
-            
-            // ✅ معالجة حالة data.data === undefined
-            if (data.data === undefined) {
-                console.warn('البيانات تأتي بدون حقل "data"', data);
-                return { success: true, data: data };
+            if (data.success) {
+                this.updateToken(data.data.access_token);
+                localStorage.setItem('access_token', data.data.access_token);
+                localStorage.setItem('user_data', JSON.stringify(data.data.user));
             }
             
             return data;
-        }
-
-        // ✅ دوال HTTP عامة
-        async get(endpoint, params = {}, includeAuth = true) {
-            try {
-                const url = new URL(`${this.baseURL}${endpoint}`);
-                Object.keys(params).forEach(key => 
-                    url.searchParams.append(key, params[key])
-                );
-                
-                const response = await fetch(url, {
-                    headers: this.getHeaders(includeAuth)
-                });
-                
-                return await this.handleResponse(response);
-            } catch (error) {
-                console.error(`GET ${endpoint} error:`, error);
-                throw error;
-            }
-        }
-
-        async post(endpoint, data = {}, includeAuth = true) {
-            try {
-                const response = await fetch(`${this.baseURL}${endpoint}`, {
-                    method: 'POST',
-                    headers: this.getHeaders(includeAuth),
-                    body: JSON.stringify(data)
-                });
-                
-                return await this.handleResponse(response);
-            } catch (error) {
-                console.error(`POST ${endpoint} error:`, error);
-                throw error;
-            }
-        }
-
-        async put(endpoint, data = {}, includeAuth = true) {
-            try {
-                const response = await fetch(`${this.baseURL}${endpoint}`, {
-                    method: 'PUT',
-                    headers: this.getHeaders(includeAuth),
-                    body: JSON.stringify(data)
-                });
-                
-                return await this.handleResponse(response);
-            } catch (error) {
-                console.error(`PUT ${endpoint} error:`, error);
-                throw error;
-            }
-        }
-
-        async delete(endpoint, includeAuth = true) {
-            try {
-                const response = await fetch(`${this.baseURL}${endpoint}`, {
-                    method: 'DELETE',
-                    headers: this.getHeaders(includeAuth)
-                });
-                
-                return await this.handleResponse(response);
-            } catch (error) {
-                console.error(`DELETE ${endpoint} error:`, error);
-                throw error;
-            }
-        }
-
-        // ========== الكتب ==========
-        async getBooks(params = {}) {
-            return await this.get('/books', params);
-        }
-
-        async getBookById(bookId) {
-            return await this.get(`/books/${bookId}`);
-        }
-
-        async getFeaturedBooks() {
-            return await this.get('/books/featured');
-        }
-
-        async createBook(bookData) {
-            return await this.post('/books', bookData);
-        }
-
-        async updateBook(bookId, bookData) {
-            return await this.put(`/books/${bookId}`, bookData);
-        }
-
-        async deleteBook(bookId) {
-            return await this.delete(`/books/${bookId}`);
-        }
-
-        // ========== السلة ==========
-        async getCart() {
-            return await this.get('/cart');
-        }
-
-        async addToCart(bookId, quantity = 1) {
-            return await this.post('/cart', { book_id: bookId, quantity });
-        }
-
-        async updateCartItem(itemId, quantity) {
-            return await this.put(`/cart/${itemId}`, { quantity });
-        }
-
-        async removeFromCart(itemId) {
-            return await this.delete(`/cart/${itemId}`);
-        }
-
-        async clearCart() {
-            return await this.delete('/cart/clear');
-        }
-
-        // ========== الطلبات ==========
-        async createOrder(orderData) {
-            return await this.post('/orders', orderData);
-        }
-
-        async getOrders() {
-            return await this.get('/orders');
-        }
-
-        // ========== المصادقة ==========
-        async login(email, password) {
-            const result = await this.post('/auth/login', { email, password }, false);
-            if (result.success && result.data.access_token) {
-                this.updateToken(result.data.access_token);
-                localStorage.setItem('user_data', JSON.stringify(result.data.user));
-            }
-            return result;
-        }
-
-        async register(userData) {
-            return await this.post('/auth/register', userData, false);
-        }
-
-        async logout() {
-            localStorage.removeItem('access_token');
-            localStorage.removeItem('user_data');
-            this.token = null;
-        }
-
-        // ========== حفظة القرآن ==========
-        async registerHafiz(hafizData) {
-            return await this.post('/hafiz/register', hafizData);
-        }
-
-        // ========== التصنيفات والعلماء ==========
-        async getCategories() {
-            return await this.get('/categories');
-        }
-
-        async getScholars() {
-            return await this.get('/scholars');
-        }
-
-        // ========== لوحة التحكم ==========
-        async getAdminStats() {
-            return await this.get('/admin/stats');
-        }
-
-        async getPendingHafizRequests() {
-            return await this.get('/admin/hafiz-requests');
-        }
-
-        async updateHafizRequest(requestId, status) {
-            return await this.put(`/admin/hafiz-requests/${requestId}`, { status });
+        } catch (error) {
+            console.error('Login error:', error);
+            throw error;
         }
     }
 
-    // إنشاء نسخة عالمية من خدمة API
-    const apiService = new ApiService();
-    </script>
+    async register(userData) {
+        try {
+            const response = await fetch(`${this.baseURL}/auth/register`, {
+                method: 'POST',
+                headers: this.getHeaders(false),
+                body: JSON.stringify(userData)
+            });
+            
+            return await this.handleResponse(response);
+        } catch (error) {
+            console.error('Register error:', error);
+            throw error;
+        }
+    }
+
+    // ========== الكتب ==========
+    async getBooks(category = null, search = null, level = null) {
+        try {
+            let url = `${this.baseURL}/books`;
+            const params = new URLSearchParams();
+            
+            if (category) params.append('category', category);
+            if (search) params.append('search', search);
+            if (level) params.append('level', level);
+            
+            const queryString = params.toString();
+            if (queryString) url += `?${queryString}`;
+            
+            const response = await fetch(url, {
+                headers: this.getHeaders()
+            });
+            
+            return await this.handleResponse(response);
+        } catch (error) {
+            console.error('Get books error:', error);
+            throw error;
+        }
+    }
+
+    async getBookById(bookId) {
+        try {
+            const response = await fetch(`${this.baseURL}/books/${bookId}`, {
+                headers: this.getHeaders()
+            });
+            
+            return await this.handleResponse(response);
+        } catch (error) {
+            console.error('Get book error:', error);
+            throw error;
+        }
+    }
+
+    async getFeaturedBooks() {
+        try {
+            const response = await fetch(`${this.baseURL}/books/featured`, {
+                headers: this.getHeaders()
+            });
+            
+            return await this.handleResponse(response);
+        } catch (error) {
+            console.error('Get featured books error:', error);
+            throw error;
+        }
+    }
+
+    // ========== السلة ==========
+    async getCart() {
+        try {
+            const response = await fetch(`${this.baseURL}/cart`, {
+                headers: this.getHeaders()
+            });
+            
+            return await this.handleResponse(response);
+        } catch (error) {
+            console.error('Get cart error:', error);
+            throw error;
+        }
+    }
+
+    async addToCart(bookId, quantity = 1) {
+        try {
+            const response = await fetch(`${this.baseURL}/cart`, {
+                method: 'POST',
+                headers: this.getHeaders(),
+                body: JSON.stringify({ book_id: bookId, quantity })
+            });
+            
+            return await this.handleResponse(response);
+        } catch (error) {
+            console.error('Add to cart error:', error);
+            throw error;
+        }
+    }
+
+    async updateCartItem(itemId, quantity) {
+        try {
+            const response = await fetch(`${this.baseURL}/cart/${itemId}`, {
+                method: 'PUT',
+                headers: this.getHeaders(),
+                body: JSON.stringify({ quantity })
+            });
+            
+            return await this.handleResponse(response);
+        } catch (error) {
+            console.error('Update cart error:', error);
+            throw error;
+        }
+    }
+
+    async removeFromCart(itemId) {
+        try {
+            const response = await fetch(`${this.baseURL}/cart/${itemId}`, {
+                method: 'DELETE',
+                headers: this.getHeaders()
+            });
+            
+            return await this.handleResponse(response);
+        } catch (error) {
+            console.error('Remove from cart error:', error);
+            throw error;
+        }
+    }
+
+    // ========== الطلبات ==========
+    async createOrder(orderData) {
+        try {
+            const response = await fetch(`${this.baseURL}/orders`, {
+                method: 'POST',
+                headers: this.getHeaders(),
+                body: JSON.stringify(orderData)
+            });
+            
+            return await this.handleResponse(response);
+        } catch (error) {
+            console.error('Create order error:', error);
+            throw error;
+        }
+    }
+
+    async getOrders() {
+        try {
+            const response = await fetch(`${this.baseURL}/orders`, {
+                headers: this.getHeaders()
+            });
+            
+            return await this.handleResponse(response);
+        } catch (error) {
+            console.error('Get orders error:', error);
+            throw error;
+        }
+    }
+
+    // ========== حفظة القرآن ==========
+    async registerHafiz(hafizData) {
+        try {
+            const response = await fetch(`${this.baseURL}/hafiz/register`, {
+                method: 'POST',
+                headers: this.getHeaders(),
+                body: JSON.stringify(hafizData)
+            });
+            
+            return await this.handleResponse(response);
+        } catch (error) {
+            console.error('Register hafiz error:', error);
+            throw error;
+        }
+    }
+
+    // ========== التصنيفات والعلماء ==========
+    async getCategories() {
+        try {
+            const response = await fetch(`${this.baseURL}/categories`, {
+                headers: this.getHeaders()
+            });
+            
+            return await this.handleResponse(response);
+        } catch (error) {
+            console.error('Get categories error:', error);
+            throw error;
+        }
+    }
+
+    async getScholars() {
+        try {
+            const response = await fetch(`${this.baseURL}/scholars`, {
+                headers: this.getHeaders()
+            });
+            
+            return await this.handleResponse(response);
+        } catch (error) {
+            console.error('Get scholars error:', error);
+            throw error;
+        }
+    }
+
+    // ========== لوحة التحكم (للمسؤولين) ==========
+    async getAdminStats() {
+        try {
+            const response = await fetch(`${this.baseURL}/admin/stats`, {
+                headers: this.getHeaders()
+            });
+            
+            return await this.handleResponse(response);
+        } catch (error) {
+            console.error('Get admin stats error:', error);
+            throw error;
+        }
+    }
+
+    async getPendingHafizRequests() {
+        try {
+            const response = await fetch(`${this.baseURL}/admin/hafiz-requests`, {
+                headers: this.getHeaders()
+            });
+            
+            return await this.handleResponse(response);
+        } catch (error) {
+            console.error('Get hafiz requests error:', error);
+            throw error;
+        }
+    }
+}
+
+// إنشاء نسخة عالمية من خدمة API
+const apiService = new ApiService();
+</script>
 </body>
 </html>
