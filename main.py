@@ -230,6 +230,32 @@ class CategoryBase(BaseModel):
     icon: str
     color: str
 
+class CategoryResponse(CategoryBase):
+    """نموذج استجابة التصنيف"""
+    id: int
+    book_count: int = 0
+    created_at: Optional[datetime] = None
+    
+    class Config:
+        from_attributes = True
+
+# نموذج جديد للعلماء
+class ScholarBase(BaseModel):
+    """نموذج أساسي للعالم"""
+    name: str
+    specialization: str
+    biography: str
+    image_url: str
+    website_url: Optional[str] = None
+
+class ScholarResponse(ScholarBase):
+    """نموذج استجابة العالم"""
+    id: int
+    created_at: Optional[datetime] = None
+    
+    class Config:
+        from_attributes = True
+
 class TokenResponse(BaseModel):
     """نموذج استجابة التوكن"""
     access_token: str
@@ -360,6 +386,19 @@ class Database:
                 )
             """)
             
+            # جدول العلماء - تم إضافة هذا الجدول
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS scholars (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    name TEXT NOT NULL,
+                    specialization TEXT NOT NULL,
+                    biography TEXT NOT NULL,
+                    image_url TEXT NOT NULL,
+                    website_url TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            
             # جدول السلة
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS cart_items (
@@ -474,6 +513,19 @@ class Database:
             categories
         )
         
+        # إدخال العلماء
+        scholars = [
+            ("محمد بن صالح العثيمين", "التفسير والفقه", "عالم سعودي، كان عضواً في هيئة كبار العلماء...", "https://example.com/scholar1.jpg", "https://binothaimeen.net"),
+            ("عبد العزيز بن باز", "الفقه والعقيدة", "مفتي عام المملكة العربية السعودية سابقاً...", "https://example.com/scholar2.jpg", "https://binbaz.org.sa"),
+            ("محمد ناصر الدين الألباني", "الحديث", "عالم حديث، اشتهر بتحقيقه للحديث النبوي...", "https://example.com/scholar3.jpg", None),
+            ("يوسف القرضاوي", "الفقه المقارن", "عالم دين مصري، ورئيس الاتحاد العالمي لعلماء المسلمين...", "https://example.com/scholar4.jpg", "https://qaradawi.net"),
+        ]
+        
+        cursor.executemany(
+            "INSERT OR IGNORE INTO scholars (name, specialization, biography, image_url, website_url) VALUES (?, ?, ?, ?, ?)",
+            scholars
+        )
+        
         # إدخال إعدادات الموقع
         settings = [
             ("site_name", Config.SITE_NAME, "اسم الموقع"),
@@ -511,6 +563,18 @@ class Database:
             ("رياض الصالحين", "الإمام النووي", "الأخلاق والآداب",
              "كتاب في الأخلاق والآداب الإسلامية", 120.0, 150.0, 0, 100,
              "https://example.com/book4.jpg", "مبتدئ", 0, 0, 0, 1),
+            ("فقه السنة", "سيد سابق", "الفقه",
+             "كتاب فقهي معاصر يشرح الأحكام الفقهية", 180.0, 200.0, 10, 40,
+             "https://example.com/book5.jpg", "مبتدئ", 1, 1, 0, 1),
+            ("التجويد الميسر", "محمد أحمد معبد", "قرآن",
+             "كتاب لتعلم أحكام التجويد بشكل مبسط", 90.0, 100.0, 5, 60,
+             "https://example.com/book6.jpg", "مبتدئ", 0, 0, 1, 1),
+            ("حياة الصحابة", "محمد يوسف الكاندهلوي", "السيرة",
+             "كتاب عن حياة صحابة رسول الله صلى الله عليه وسلم", 220.0, 250.0, 12, 25,
+             "https://example.com/book7.jpg", "متوسط", 1, 0, 0, 1),
+            ("المنتقى من أخبار المصطفى", "مجدي بن منصور بن سayed", "الحديث",
+             "مجموعة منتقاة من أحاديث النبي صلى الله عليه وسلم", 130.0, 150.0, 15, 35,
+             "https://example.com/book8.jpg", "مبتدئ", 0, 0, 0, 1),
         ]
         
         cursor.executemany("""
@@ -1596,17 +1660,20 @@ async def debug_db_stats():
             cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
             tables = [row["name"] for row in cursor.fetchall()]
             
+            # جلب عينة من كل جدول للتأكد من البيانات
+            sample_data = {}
+            for table in tables:
+                cursor.execute(f"SELECT * FROM {table} LIMIT 2")
+                rows = cursor.fetchall()
+                sample_data[table] = [dict(row) for row in rows] if rows else []
+            
             return JSONResponse({
                 "database": Config.DATABASE_URL,
                 "file_exists": os.path.exists(Config.DATABASE_URL),
                 "file_size": os.path.getsize(Config.DATABASE_URL) if os.path.exists(Config.DATABASE_URL) else 0,
                 "tables": tables,
                 "books_count": books_count,
-                "tables_info": {
-                    table: {
-                        "count": cursor.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
-                    } for table in tables
-                }
+                "sample_data": sample_data
             })
     except Exception as e:
         return JSONResponse({"error": str(e)})
@@ -1700,9 +1767,33 @@ async def get_books(
             offset=offset
         )
         
+        # تحويل البيانات لتكون متوافقة مع Front-End
+        formatted_books = []
+        for book in books:
+            formatted_book = {
+                "id": book["id"],
+                "title": book["title"],
+                "author": book["author"],
+                "category": book["category"],
+                "level": book["level"],
+                "description": book["description"],
+                "price": book["price"],
+                "original_price": book["original_price"],
+                "discount": book["discount"],
+                "stock": book["stock"],
+                "image_url": book["image_url"],
+                "video_url": book["video_url"],
+                "featured": bool(book["featured"]),
+                "women_section": bool(book["women_section"]),
+                "quran_section": bool(book["quran_section"]),
+                "student_section": bool(book["student_section"]),
+                "final_price": book.get("final_price", book["price"])
+            }
+            formatted_books.append(formatted_book)
+        
         return SuccessResponse(
-            message=f"تم العثور على {len(books)} كتاب",
-            data={"books": books, "total": len(books)}
+            message=f"تم العثور على {len(formatted_books)} كتاب",
+            data={"books": formatted_books, "total": len(formatted_books)}
         )
         
     except Exception as e:
@@ -1717,9 +1808,27 @@ async def get_featured_books():
     """الحصول على الكتب المميزة"""
     try:
         books = book_service.get_all_books(featured=True, limit=8)
+        formatted_books = []
+        for book in books:
+            formatted_book = {
+                "id": book["id"],
+                "title": book["title"],
+                "author": book["author"],
+                "category": book["category"],
+                "level": book["level"],
+                "description": book["description"],
+                "price": book["price"],
+                "original_price": book["original_price"],
+                "discount": book["discount"],
+                "stock": book["stock"],
+                "image_url": book["image_url"],
+                "final_price": book.get("final_price", book["price"])
+            }
+            formatted_books.append(formatted_book)
+        
         return SuccessResponse(
             message="الكتب المميزة",
-            data={"books": books}
+            data={"books": formatted_books}
         )
     except Exception as e:
         logger.error(f"Get featured books error: {e}")
@@ -1739,9 +1848,31 @@ async def get_book(book_id: int):
                 detail="Book not found"
             )
         
+        # تحويل البيانات لتكون متوافقة مع Front-End
+        formatted_book = {
+            "id": book["id"],
+            "title": book["title"],
+            "author": book["author"],
+            "category": book["category"],
+            "level": book["level"],
+            "description": book["description"],
+            "price": book["price"],
+            "original_price": book["original_price"],
+            "discount": book["discount"],
+            "stock": book["stock"],
+            "image_url": book["image_url"],
+            "video_url": book["video_url"],
+            "featured": bool(book["featured"]),
+            "women_section": bool(book["women_section"]),
+            "quran_section": bool(book["quran_section"]),
+            "student_section": bool(book["student_section"]),
+            "final_price": book.get("final_price", book["price"]),
+            "explanations": book.get("explanations", [])
+        }
+        
         return SuccessResponse(
             message="تفاصيل الكتاب",
-            data={"book": book}
+            data={"book": formatted_book}
         )
     except HTTPException:
         raise
@@ -1760,10 +1891,22 @@ async def test_books_count():
             cursor = conn.cursor()
             cursor.execute("SELECT COUNT(*) as count FROM books")
             result = cursor.fetchone()
+            
+            # جلب عينة من الكتب
+            cursor.execute("SELECT id, title, author, category, price FROM books LIMIT 5")
+            sample_books = [dict(row) for row in cursor.fetchall()]
+            
+            # جلب قائمة الجداول
+            cursor.execute("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name")
+            tables = [row["name"] for row in cursor.fetchall()]
+            
             return JSONResponse({
                 "success": True,
                 "count": result["count"],
-                "tables": cursor.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()
+                "sample_books": sample_books,
+                "tables": tables,
+                "database_file": Config.DATABASE_URL,
+                "file_exists": os.path.exists(Config.DATABASE_URL)
             })
     except Exception as e:
         return JSONResponse({"error": str(e)})
@@ -1783,9 +1926,30 @@ async def create_book(
     
     try:
         book = book_service.create_book(book_data.dict(), current_user)
+        
+        # تحويل البيانات
+        formatted_book = {
+            "id": book["id"],
+            "title": book["title"],
+            "author": book["author"],
+            "category": book["category"],
+            "level": book["level"],
+            "description": book["description"],
+            "price": book["price"],
+            "original_price": book["original_price"],
+            "discount": book["discount"],
+            "stock": book["stock"],
+            "image_url": book["image_url"],
+            "video_url": book["video_url"],
+            "featured": bool(book["featured"]),
+            "women_section": bool(book["women_section"]),
+            "quran_section": bool(book["quran_section"]),
+            "student_section": bool(book["student_section"])
+        }
+        
         return SuccessResponse(
             message="تم إنشاء الكتاب بنجاح",
-            data={"book": book}
+            data={"book": formatted_book}
         )
     except HTTPException:
         raise
@@ -1812,9 +1976,30 @@ async def update_book(
     
     try:
         book = book_service.update_book(book_id, book_data, current_user)
+        
+        # تحويل البيانات
+        formatted_book = {
+            "id": book["id"],
+            "title": book["title"],
+            "author": book["author"],
+            "category": book["category"],
+            "level": book["level"],
+            "description": book["description"],
+            "price": book["price"],
+            "original_price": book["original_price"],
+            "discount": book["discount"],
+            "stock": book["stock"],
+            "image_url": book["image_url"],
+            "video_url": book["video_url"],
+            "featured": bool(book["featured"]),
+            "women_section": bool(book["women_section"]),
+            "quran_section": bool(book["quran_section"]),
+            "student_section": bool(book["student_section"])
+        }
+        
         return SuccessResponse(
             message="تم تحديث الكتاب بنجاح",
-            data={"book": book}
+            data={"book": formatted_book}
         )
     except HTTPException:
         raise
@@ -1869,9 +2054,29 @@ async def get_cart(current_user: dict = Depends(AuthService.get_current_user)):
         cart_items = cart_service.get_cart(current_user["id"])
         # حساب المجموع الكلي
         total = sum(item["total"] for item in cart_items)
+        
+        # تحويل البيانات لتكون متوافقة
+        formatted_items = []
+        for item in cart_items:
+            formatted_item = {
+                "id": item["id"],
+                "book_id": item["book_id"],
+                "quantity": item["quantity"],
+                "title": item["title"],
+                "author": item["author"],
+                "category": item["category"],
+                "image_url": item["image_url"],
+                "price": item["price"],
+                "discount": item["discount"],
+                "stock": item["stock"],
+                "final_price": item["final_price"],
+                "total": item["total"]
+            }
+            formatted_items.append(formatted_item)
+        
         return SuccessResponse(
             message="سلة الشراء",
-            data={"cart": cart_items, "total_items": len(cart_items), "total": total}
+            data={"cart": formatted_items, "total_items": len(formatted_items), "total": total}
         )
     except Exception as e:
         logger.error(f"Get cart error: {e}")
@@ -1892,9 +2097,25 @@ async def add_to_cart(
             cart_item.book_id,
             cart_item.quantity
         )
+        
+        formatted_item = {
+            "id": item["id"],
+            "book_id": item["book_id"],
+            "quantity": item["quantity"],
+            "title": item["title"],
+            "author": item["author"],
+            "category": item["category"],
+            "image_url": item["image_url"],
+            "price": item["price"],
+            "discount": item["discount"],
+            "stock": item["stock"],
+            "final_price": item["final_price"],
+            "total": item["total"]
+        }
+        
         return SuccessResponse(
             message="تمت إضافة الكتاب إلى السلة",
-            data={"item": item}
+            data={"item": formatted_item}
         )
     except HTTPException:
         raise
@@ -1914,9 +2135,25 @@ async def update_cart_item(
     """تحديث كمية عنصر في السلة"""
     try:
         item = CartService.update_cart_item(current_user["id"], item_id, quantity)
+        
+        formatted_item = {
+            "id": item["id"],
+            "book_id": item["book_id"],
+            "quantity": item["quantity"],
+            "title": item["title"],
+            "author": item["author"],
+            "category": item["category"],
+            "image_url": item["image_url"],
+            "price": item["price"],
+            "discount": item["discount"],
+            "stock": item["stock"],
+            "final_price": item["final_price"],
+            "total": item["total"]
+        }
+        
         return SuccessResponse(
             message="تم تحديث السلة",
-            data={"item": item}
+            data={"item": formatted_item}
         )
     except HTTPException:
         raise
@@ -2016,9 +2253,33 @@ async def get_user_orders(current_user: dict = Depends(AuthService.get_current_u
     """الحصول على طلبات المستخدم"""
     try:
         orders = OrderService.get_user_orders(current_user["id"])
+        
+        formatted_orders = []
+        for order in orders:
+            formatted_order = {
+                "id": order["id"],
+                "order_number": order["order_number"],
+                "status": order["status"],
+                "total_amount": order["total_amount"],
+                "subtotal": order["subtotal"],
+                "discount": order["discount"],
+                "shipping_cost": order["shipping_cost"],
+                "payment_method": order["payment_method"],
+                "customer_name": order["customer_name"],
+                "phone": order["phone"],
+                "email": order["email"],
+                "address": order["address"],
+                "province": order["province"],
+                "city": order["city"],
+                "created_at": order["created_at"],
+                "completed_at": order["completed_at"],
+                "items": order.get("items", [])
+            }
+            formatted_orders.append(formatted_order)
+        
         return SuccessResponse(
             message="طلباتك",
-            data={"orders": orders}
+            data={"orders": formatted_orders}
         )
     except Exception as e:
         logger.error(f"Get user orders error: {e}")
@@ -2227,20 +2488,37 @@ async def get_categories():
         with db.get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute("SELECT * FROM categories ORDER BY name")
-            categories = [dict(row) for row in cursor.fetchall()]
-            
-            # حساب عدد الكتب في كل تصنيف
-            for category in categories:
+            categories = []
+            for row in cursor.fetchall():
+                category = dict(row)
+                
+                # حساب عدد الكتب في كل تصنيف
                 cursor.execute(
                     "SELECT COUNT(*) as count FROM books WHERE category = ?",
                     (category["name"],)
                 )
-                count = cursor.fetchone()["count"]
-                category["book_count"] = count
+                count_result = cursor.fetchone()
+                category["book_count"] = count_result["count"] if count_result else 0
+                
+                categories.append(category)
+            
+            # تحويل البيانات لتكون متوافقة مع Front-End
+            formatted_categories = []
+            for category in categories:
+                formatted_category = {
+                    "id": category["id"],
+                    "name": category["name"],
+                    "description": category["description"],
+                    "icon": category["icon"],
+                    "color": category["color"],
+                    "book_count": category["book_count"],
+                    "created_at": category.get("created_at")
+                }
+                formatted_categories.append(formatted_category)
             
             return SuccessResponse(
                 message="التصنيفات",
-                data={"categories": categories}
+                data={"categories": formatted_categories}
             )
     except Exception as e:
         logger.error(f"Get categories error: {e}")
@@ -2249,14 +2527,66 @@ async def get_categories():
             detail="Failed to retrieve categories"
         )
 
+@app.get("/api/scholars", response_model=SuccessResponse)
+async def get_scholars():
+    """الحصول على قائمة العلماء - تم إضافة هذا المسار"""
+    try:
+        with db.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT * FROM scholars ORDER BY name")
+            scholars = [dict(row) for row in cursor.fetchall()]
+            
+            formatted_scholars = []
+            for scholar in scholars:
+                formatted_scholar = {
+                    "id": scholar["id"],
+                    "name": scholar["name"],
+                    "specialization": scholar["specialization"],
+                    "biography": scholar["biography"],
+                    "image_url": scholar["image_url"],
+                    "website_url": scholar["website_url"],
+                    "created_at": scholar.get("created_at")
+                }
+                formatted_scholars.append(formatted_scholar)
+            
+            return SuccessResponse(
+                message="قائمة العلماء",
+                data={"scholars": formatted_scholars}
+            )
+    except Exception as e:
+        logger.error(f"Get scholars error: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to retrieve scholars"
+        )
+
 @app.get("/api/books/women", response_model=SuccessResponse)
 async def get_women_books():
     """الحصول على كتب قسم النساء"""
     try:
         books = book_service.get_all_books(women_section=True)
+        
+        formatted_books = []
+        for book in books:
+            formatted_book = {
+                "id": book["id"],
+                "title": book["title"],
+                "author": book["author"],
+                "category": book["category"],
+                "level": book["level"],
+                "description": book["description"],
+                "price": book["price"],
+                "original_price": book["original_price"],
+                "discount": book["discount"],
+                "stock": book["stock"],
+                "image_url": book["image_url"],
+                "final_price": book.get("final_price", book["price"])
+            }
+            formatted_books.append(formatted_book)
+        
         return SuccessResponse(
             message="كتب قسم النساء",
-            data={"books": books, "count": len(books)}
+            data={"books": formatted_books, "count": len(formatted_books)}
         )
     except Exception as e:
         logger.error(f"Get women books error: {e}")
@@ -2270,9 +2600,28 @@ async def get_quran_books():
     """الحصول على كتب قسم القرآن"""
     try:
         books = book_service.get_all_books(quran_section=True)
+        
+        formatted_books = []
+        for book in books:
+            formatted_book = {
+                "id": book["id"],
+                "title": book["title"],
+                "author": book["author"],
+                "category": book["category"],
+                "level": book["level"],
+                "description": book["description"],
+                "price": book["price"],
+                "original_price": book["original_price"],
+                "discount": book["discount"],
+                "stock": book["stock"],
+                "image_url": book["image_url"],
+                "final_price": book.get("final_price", book["price"])
+            }
+            formatted_books.append(formatted_book)
+        
         return SuccessResponse(
             message="كتب قسم القرآن",
-            data={"books": books, "count": len(books)}
+            data={"books": formatted_books, "count": len(formatted_books)}
         )
     except Exception as e:
         logger.error(f"Get quran books error: {e}")
@@ -2285,10 +2634,10 @@ async def get_quran_books():
 async def get_student_levels():
     """الحصول على مستويات طالب العلم"""
     levels = [
-        {"id": 1, "name": "المستوى الأول", "description": "كتب للمبتدئين في طلب العلم"},
-        {"id": 2, "name": "المستوى الثاني", "description": "كتب للمتوسطين في طلب العلم"},
-        {"id": 3, "name": "المستوى الثالث", "description": "كتب للمتقدمين في طلب العلم"},
-        {"id": 4, "name": "المستوى الرابع", "description": "كتب للمتخصصين في العلوم الشرعية"}
+        {"id": 1, "name": "المستوى الأول", "description": "كتب للمبتدئين في طلب العلم", "value": "مبتدئ"},
+        {"id": 2, "name": "المستوى الثاني", "description": "كتب للمتوسطين في طلب العلم", "value": "متوسط"},
+        {"id": 3, "name": "المستوى الثالث", "description": "كتب للمتقدمين في طلب العلم", "value": "متقدم"},
+        {"id": 4, "name": "المستوى الرابع", "description": "كتب للمتخصصين في العلوم الشرعية", "value": "عالم"}
     ]
     
     return SuccessResponse(
@@ -2315,9 +2664,28 @@ async def get_student_level_books(level_id: int):
     
     try:
         books = book_service.get_all_books(level=level_name, student_section=True)
+        
+        formatted_books = []
+        for book in books:
+            formatted_book = {
+                "id": book["id"],
+                "title": book["title"],
+                "author": book["author"],
+                "category": book["category"],
+                "level": book["level"],
+                "description": book["description"],
+                "price": book["price"],
+                "original_price": book["original_price"],
+                "discount": book["discount"],
+                "stock": book["stock"],
+                "image_url": book["image_url"],
+                "final_price": book.get("final_price", book["price"])
+            }
+            formatted_books.append(formatted_book)
+        
         return SuccessResponse(
             message=f"كتب المستوى {level_id} ({level_name})",
-            data={"books": books, "count": len(books)}
+            data={"books": formatted_books, "count": len(formatted_books)}
         )
     except Exception as e:
         logger.error(f"Get student level books error: {e}")
@@ -2601,7 +2969,10 @@ async def root():
             "auth": "/api/auth/*",
             "books": "/api/books/*",
             "cart": "/api/cart/*",
-            "orders": "/api/orders/*"
+            "orders": "/api/orders/*",
+            "categories": "/api/categories",
+            "scholars": "/api/scholars",
+            "student_levels": "/api/student/levels"
         }
     })
 
@@ -2613,6 +2984,17 @@ async def health_check():
             cursor = conn.cursor()
             cursor.execute("SELECT 1")
             db_status = "healthy"
+            
+            # التحقق من الجداول الأساسية
+            cursor.execute("SELECT COUNT(*) as count FROM books")
+            books_count = cursor.fetchone()["count"]
+            
+            cursor.execute("SELECT COUNT(*) as count FROM categories")
+            categories_count = cursor.fetchone()["count"]
+            
+            cursor.execute("SELECT COUNT(*) as count FROM scholars")
+            scholars_count = cursor.fetchone()["count"]
+            
     except Exception as e:
         db_status = f"unhealthy: {str(e)}"
         logger.error(f"Database health check failed: {e}")
@@ -2622,6 +3004,9 @@ async def health_check():
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "service": "noor-library-api",
         "database": db_status,
+        "books_count": books_count if 'books_count' in locals() else 0,
+        "categories_count": categories_count if 'categories_count' in locals() else 0,
+        "scholars_count": scholars_count if 'scholars_count' in locals() else 0,
         "version": "1.0.0"
     })
 
@@ -2694,12 +3079,17 @@ async def update_settings(
             
             for key, value in settings.items():
                 cursor.execute("""
-                    INSERT OR REPLACE INTO site_settings (key, value, updated_at)
-                    VALUES (?, ?, CURRENT_TIMESTAMP)
-                """, (key, str(value)))
+                    INSERT OR REPLACE INTO site_settings (key, value, description, updated_at)
+                    VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+                """, (key, str(value), f"إعداد {key}"))
+            
+            # إعادة تحميل الإعدادات
+            cursor.execute("SELECT key, value FROM site_settings")
+            updated_settings = {row["key"]: row["value"] for row in cursor.fetchall()}
             
             return SuccessResponse(
-                message="تم تحديث الإعدادات بنجاح"
+                message="تم تحديث الإعدادات بنجاح",
+                data={"settings": updated_settings}
             )
             
     except Exception as e:
@@ -2749,7 +3139,7 @@ if __name__ == "__main__":
     import uvicorn
     
     print("=" * 60)
-    print("مكتبة النور - Back-End")
+    print("مكتبة النور - Back-End - النسخة المصححة")
     print("=" * 60)
     print(f"Python Version: {sys.version}")
     print(f"Database: {Config.DATABASE_URL}")
@@ -2757,8 +3147,17 @@ if __name__ == "__main__":
     print(f"Admin Email: admin@noor-library.com")
     print(f"Admin Password: admin123")
     print("=" * 60)
+    print("المشاكل التي تم إصلاحها:")
+    print("1. إضافة جدول العلماء (scholars)")
+    print("2. إصلاح استعلامات التصنيفات")
+    print("3. إصلاح تحويل البيانات لـ Front-End")
+    print("4. إضافة بيانات أولية شاملة")
+    print("5. إصلاح حفظ الإعدادات في قاعدة البيانات")
+    print("=" * 60)
     print("Starting server on http://localhost:8000")
     print("API Documentation: http://localhost:8000/api/docs")
+    print("Health Check: http://localhost:8000/api/health")
+    print("Debug Stats: http://localhost:8000/api/debug/db-stats")
     print("=" * 60)
     
     uvicorn.run(
